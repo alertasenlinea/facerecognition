@@ -13,7 +13,8 @@ const corsOptions = {
         'http://localhost:3300',
         'http://localhost:3000',
         'https://app.faceid.alertasenlinea.com.ar',
-        'http://app.faceid.alertasenlinea.com.ar'
+        'http://app.faceid.alertasenlinea.com.ar',
+        'https://faceid.alertasenlinea.com.ar'
     ],
     credentials: true,
     optionsSuccessStatus: 200
