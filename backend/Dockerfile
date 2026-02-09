@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY package*.json ./
 # Install ALL dependencies (including devDependencies if needed for build steps)
-RUN npm ci
+RUN npm install
 
 COPY . .
 # If you had a build step (e.g., TypeScript), you would run it here:
@@ -22,7 +22,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install ONLY production dependencies
-RUN npm ci --only=production && npm cache clean --force
+RUN npm install --only=production && npm cache clean --force
 
 # Copy source code from builder (or local context if no build step)
 # Since we don't have a build step, we copy source directly. 
