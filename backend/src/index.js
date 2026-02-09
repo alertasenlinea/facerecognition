@@ -25,8 +25,12 @@ app.use(express.json());
 
 app.use('/api', apiRoutes);
 
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+const healthRoutes = require('./routes/health.routes');
+
+app.use('/health', healthRoutes);
+
+app.get('/', (req, res) => {
+    res.status(200).json({ status: 'ok', service: 'face-recognition-backend' });
 });
 
 app.listen(PORT, () => {

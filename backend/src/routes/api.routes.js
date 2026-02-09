@@ -26,7 +26,11 @@ router.post('/detect', upload.single('image'), async (req, res) => {
         });
     } catch (error) {
         console.error('Detect endpoint error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message,
+            details: error.response?.data || 'Internal Server Error',
+            step: 'detection'
+        });
     }
 });
 
@@ -72,7 +76,11 @@ router.post('/search', upload.single('image'), async (req, res) => {
 
     } catch (error) {
         console.error('Search endpoint error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message,
+            details: error.response?.data || 'Internal Server Error',
+            step: 'search'
+        });
     }
 });
 
@@ -119,7 +127,11 @@ router.post('/verify', upload.fields([{ name: 'image1' }, { name: 'image2' }]), 
 
     } catch (error) {
         console.error('Verify endpoint error:', error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message,
+            details: error.response?.data || 'Internal Server Error',
+            step: 'verification'
+        });
     }
 });
 
