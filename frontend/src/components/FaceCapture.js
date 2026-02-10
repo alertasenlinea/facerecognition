@@ -128,7 +128,7 @@ const FaceCapture = () => {
                     <pre>{JSON.stringify(result, null, 2)}</pre>
                     {result.imageUrl && (
                         <div>
-                            <p>Saved to: <a href={result.imageUrl} target="_blank" rel="noreferrer">MinIO Link</a></p>
+                            <p>Saved to: <a href={result.imageUrl} target="_blank" rel="noreferrer">View Image</a></p>
                         </div>
                     )}
                 </div>
