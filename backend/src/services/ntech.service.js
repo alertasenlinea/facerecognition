@@ -101,8 +101,47 @@ const verifyFaces = async (detection1Id, detection2Id, cardId = null) => {
     }
 };
 
+/**
+ * Create a new face (card) in NTECH system
+ * @param {Object} faceData - Data for the new face
+ * @returns {Promise<Object>} Created card
+ */
+const createFace = async (faceData) => {
+    try {
+        // FindFace Multi expects a body with at least specific detection info or just creates a card
+        // Assuming we are attaching a detection to a new card
+
+        // 1. Create a card (human)
+        const cardResponse = await ntechClient.post('/cards/humans/', {
+            name: faceData.name,
+            meta: faceData.meta || {}
+        });
+
+        if (!cardResponse.data || !cardResponse.data.id) {
+            throw new Error('Failed to create card');
+        }
+
+        const cardId = cardResponse.data.id;
+
+        // 2. Save the face (detection) to the card if detection_id is provided
+        // This endpoint might vary based on API version. 
+        // For FindFace Multi, we usually "save" a temporary detection to a permanent card.
+        if (faceData.detectionId) {
+            await ntechClient.post(`/cards/humans/${cardId}/save_detection/`, {
+                detection_id: faceData.detectionId
+            });
+        }
+
+        return cardResponse.data;
+    } catch (error) {
+        console.error('NTech Create Face Error:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 module.exports = {
     detectFaces,
     searchFaces,
-    verifyFaces
+    verifyFaces,
+    createFace
 };

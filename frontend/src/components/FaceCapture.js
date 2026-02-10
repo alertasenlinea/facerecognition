@@ -11,10 +11,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const FaceCapture = () => {
     const webcamRef = useRef(null);
-    const [imgSrc, setImgSrc] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState(null);
-    const [user, setUser] = useState(null);
+    const [enrollName, setEnrollName] = useState('');
+    const [enrolling, setEnrolling] = useState(false);
 
     useEffect(() => {
         const getSession = async () => {
@@ -48,11 +46,13 @@ const FaceCapture = () => {
     const retake = () => {
         setImgSrc(null);
         setResult(null);
+        setEnrollName('');
     };
 
     const processImage = async () => {
         if (!imgSrc) return;
         setLoading(true);
+        setResult(null);
 
         try {
             // Convert base64 to blob
@@ -63,7 +63,8 @@ const FaceCapture = () => {
             const formData = new FormData();
             formData.append('image', file);
 
-            const response = await axios.post(`${API_URL}/detect`, formData, {
+            // CHANGED: Use /search instead of /detect
+            const response = await axios.post(`${API_URL}/search`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 }
@@ -72,9 +73,37 @@ const FaceCapture = () => {
             setResult(response.data);
         } catch (error) {
             console.error("Error processing image", error);
-            alert("Error processing image: " + (error.response?.data?.error || error.message));
+            // Handle 404 (No face) separately if needed, though API returns 404 for no face in backend
+            if (error.response?.status === 404) {
+                alert("No face detected or error: " + (error.response?.data?.error));
+            } else {
+                alert("Error processing image: " + (error.response?.data?.error || error.message));
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const enrollFace = async () => {
+        if (!enrollName.trim() || !result?.detectedFace?.id) return;
+        setEnrolling(true);
+        try {
+            await axios.post(`${API_URL}/enroll`, {
+                detectionId: result.detectedFace.id,
+                name: enrollName
+            });
+            alert('Person enrolled successfully!');
+            // Update UI to show as MATCH
+            setResult(prev => ({
+                ...prev,
+                status: 'MATCH',
+                bestMatch: { card: { name: enrollName, id: 'new' }, similarity: 1.0 }
+            }));
+        } catch (error) {
+            console.error("Error enrolling", error);
+            alert("Error enrolling: " + (error.response?.data?.error || error.message));
+        } finally {
+            setEnrolling(false);
         }
     };
 
@@ -114,23 +143,57 @@ const FaceCapture = () => {
                     <button onClick={capture}>Capture Photo</button>
                 ) : (
                     <>
-                        <button onClick={retake} disabled={loading}>Retake</button>
-                        <button onClick={processImage} disabled={loading}>
-                            {loading ? 'Processing...' : 'Verify Face'}
-                        </button>
+                        <button onClick={retake} disabled={loading || enrolling}>Retake</button>
+                        {!result && (
+                            <button onClick={processImage} disabled={loading}>
+                                {loading ? 'Processing...' : 'Identify Face'}
+                            </button>
+                        )}
                     </>
                 )}
             </div>
 
             {result && (
-                <div className="results">
-                    <h3>Results:</h3>
-                    <pre>{JSON.stringify(result, null, 2)}</pre>
-                    {result.imageUrl && (
-                        <div>
-                            <p>Saved to: <a href={result.imageUrl} target="_blank" rel="noreferrer">View Image</a></p>
+                <div className="results" style={{ marginTop: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '8px' }}>
+
+                    {/* STATUS DISPLAY */}
+                    {result.status === 'MATCH' ? (
+                        <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '15px', borderRadius: '5px', marginBottom: '15px', textAlign: 'center' }}>
+                            <h2 style={{ margin: 0 }}>✅ ACCESS GRANTED</h2>
+                            <p style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
+                                Welcome, {result.bestMatch?.card?.name || 'Unknown'}
+                            </p>
+                            <small>Confidence: {(result.bestMatch?.similarity * 100).toFixed(1)}%</small>
+                        </div>
+                    ) : (
+                        <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '5px', marginBottom: '15px', textAlign: 'center' }}>
+                            <h2 style={{ margin: 0 }}>❌ NOT RECOGNIZED</h2>
+                            <p>Face detected, but not found in database.</p>
+
+                            {/* ENROLLMENT FORM */}
+                            <div style={{ marginTop: '15px', borderTop: '1px solid #f5c6cb', paddingTop: '10px' }}>
+                                <h4>Register this person?</h4>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Name"
+                                    value={enrollName}
+                                    onChange={(e) => setEnrollName(e.target.value)}
+                                    style={{ padding: '8px', marginRight: '10px' }}
+                                />
+                                <button onClick={enrollFace} disabled={enrolling || !enrollName.trim()}>
+                                    {enrolling ? 'Saving...' : 'Enroll Face'}
+                                </button>
+                            </div>
                         </div>
                     )}
+
+                    <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
+                        <p>Saved to: <a href={result.imageUrl} target="_blank" rel="noreferrer">View Image</a> (Log ID: {result.logId})</p>
+                        <details>
+                            <summary>Debug Info</summary>
+                            <pre>{JSON.stringify(result, null, 2)}</pre>
+                        </details>
+                    </div>
                 </div>
             )}
         </div>

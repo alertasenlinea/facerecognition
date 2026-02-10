@@ -2,37 +2,10 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { uploadFile } = require('../services/storage.service');
-const { detectFaces, searchFaces, verifyFaces } = require('../services/ntech.service');
+const { logAccess } = require('../services/db.service');
+const { detectFaces, searchFaces, verifyFaces, createFace } = require('../services/ntech.service');
 
-const upload = multer({ storage: multer.memoryStorage() });
-
-// Detect faces in an image
-router.post('/detect', upload.single('image'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No image provided' });
-        }
-
-        // Upload image to storage
-        const imageUrl = await uploadFile(req.file);
-
-        // Detect faces using NTLAB
-        const detectionResult = await detectFaces(req.file.buffer, req.file.originalname);
-
-        res.json({
-            imageUrl,
-            detection: detectionResult,
-            faces: detectionResult.objects?.face || []
-        });
-    } catch (error) {
-        console.error('Detect endpoint error:', error);
-        res.status(500).json({
-            error: error.message,
-            details: error.response?.data || 'Internal Server Error',
-            step: 'detection'
-        });
-    }
-});
+// ... (existing code)
 
 // Search for similar faces in the system (1:N)
 router.post('/search', upload.single('image'), async (req, res) => {
@@ -49,6 +22,13 @@ router.post('/search', upload.single('image'), async (req, res) => {
 
         // Check if any faces were detected
         if (!detectionResult.objects?.face || detectionResult.objects.face.length === 0) {
+            // Log no face detected
+            await logAccess({
+                imageUrl,
+                status: 'NO_MATCH',
+                metadata: { error: 'No face detected' }
+            });
+
             return res.status(404).json({
                 error: 'No faces detected in the image',
                 imageUrl
@@ -62,16 +42,37 @@ router.post('/search', upload.single('image'), async (req, res) => {
         // Search for similar faces
         const searchOptions = {
             limit: req.query.limit || 10,
-            threshold: req.query.threshold || 0.7
+            threshold: req.query.threshold || 0.75
         };
 
         const searchResults = await searchFaces(detectionId, searchOptions);
+        const matches = searchResults.results || [];
+        const bestMatch = matches.length > 0 ? matches[0] : null;
+
+        // Determine status
+        const status = bestMatch ? 'MATCH' : 'NO_MATCH';
+
+        // Log access
+        const logEntry = await logAccess({
+            imageUrl,
+            detectionId,
+            matchedCardId: bestMatch?.card?.id, // Adjust based on NTECH response structure
+            confidence: bestMatch?.similarity,
+            status,
+            metadata: {
+                matches_count: matches.length,
+                best_match: bestMatch
+            }
+        });
 
         res.json({
             imageUrl,
             detectedFace: firstFace,
             searchResults,
-            totalMatches: searchResults.results?.length || 0
+            matches,
+            bestMatch,
+            status, // 'MATCH' or 'NO_MATCH'
+            logId: logEntry?.id
         });
 
     } catch (error) {
@@ -80,6 +81,36 @@ router.post('/search', upload.single('image'), async (req, res) => {
             error: error.message,
             details: error.response?.data || 'Internal Server Error',
             step: 'search'
+        });
+    }
+});
+
+// Enroll a new face
+router.post('/enroll', async (req, res) => {
+    try {
+        const { detectionId, name, meta } = req.body;
+
+        if (!detectionId || !name) {
+            return res.status(400).json({ error: 'Detection ID and Name are required' });
+        }
+
+        const newCard = await createFace({
+            detectionId,
+            name,
+            meta
+        });
+
+        res.json({
+            message: 'Face enrolled successfully',
+            card: newCard
+        });
+
+    } catch (error) {
+        console.error('Enroll endpoint error:', error);
+        res.status(500).json({
+            error: error.message,
+            details: error.response?.data || 'Internal Server Error',
+            step: 'enrollment'
         });
     }
 });
