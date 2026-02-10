@@ -5,6 +5,8 @@ const { uploadFile } = require('../services/storage.service');
 const { logAccess } = require('../services/db.service');
 const { detectFaces, searchFaces, verifyFaces, createFace } = require('../services/ntech.service');
 
+const upload = multer({ storage: multer.memoryStorage() });
+
 // ... (existing code)
 
 // Search for similar faces in the system (1:N)
