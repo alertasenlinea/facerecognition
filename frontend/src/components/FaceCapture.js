@@ -11,6 +11,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const FaceCapture = () => {
     const webcamRef = useRef(null);
+    const [imgSrc, setImgSrc] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [result, setResult] = useState(null);
+    const [user, setUser] = useState(null);
     const [enrollName, setEnrollName] = useState('');
     const [enrolling, setEnrolling] = useState(false);
 
