@@ -102,35 +102,53 @@ const FaceCapture = () => {
             }
 
             // Check attributes logic
-            let passed = false;
-            const attributes = face.attributes || {};
-            const emotions = attributes.emotions || {};
-            const headpose = attributes.headpose || {}; // yaw, pitch, roll
+            // Ntech response structure from logs:
+            // face.features.emotions = { name: "happy", confidence: 0.99 }
+            // face.features.headpose_pitch = { name: 19.2, confidence: 1 }
+            // face.features.headpose_yaw = { name: -3.3, confidence: 1 }
 
-            console.log("Challenge Attributes:", attributes);
+            const features = face.features || {};
+            const emotions = features.emotions || {};
+            const headposeYaw = features.headpose_yaw || {};
+
+            console.log("Challenge Attributes (Fixed):", features);
+
+            let passed = false;
 
             switch (currentChallenge.id) {
                 case 'smile':
-                    // NTech emotions: neutral, happy, sad, surprise, anger, fear, disgust
-                    passed = (emotions.happy || 0) >= 0.5;
+                    // Check if dominant emotion is 'happy' with high confidence
+                    passed = (emotions.name === 'happy' && emotions.confidence > 0.6);
                     break;
                 case 'turn_left':
-                    // Assuming Yaw changes. Threshold 10 degrees.
-                    passed = Math.abs(headpose.yaw || 0) > 10;
+                    // Yaw magnitude check (> 15 degrees)
+                    // Note: Direction sign (-/+) depends on camera mirror and API. 
+                    // Accepting ABS > 15 for now to verify Movement.
+                    const yawValue = headposeYaw.name || 0;
+                    passed = Math.abs(yawValue) > 15;
                     break;
                 case 'turn_right':
-                    passed = Math.abs(headpose.yaw || 0) > 10;
+                    const yawValueRight = headposeYaw.name || 0;
+                    passed = Math.abs(yawValueRight) > 15;
                     break;
             }
 
             if (passed) {
                 setChallengeStatus('success');
                 setTimeout(() => {
-                    nextChallenge(challengeStep); // Current step index passed
+                    nextChallenge(challengeStep);
                 }, 1000);
             } else {
                 setChallengeStatus('failed');
-                alert(`Challenge Failed: ${currentChallenge.instruction}. Try again!`);
+                // Give hint
+                let msg = "Try again!";
+                if (currentChallenge.id === 'smile') msg = `Emotion detected: ${emotions.name || 'none'} (${((emotions.confidence || 0) * 100).toFixed(0)}%)`;
+                if (currentChallenge.id.includes('turn')) {
+                    const y = headposeYaw.name || 0;
+                    msg = `Angle: ${y.toFixed(1)}° (Need > 15°)`;
+                }
+
+                alert(`Challenge Failed: ${currentChallenge.instruction}. ${msg}`);
             }
 
         } catch (error) {
