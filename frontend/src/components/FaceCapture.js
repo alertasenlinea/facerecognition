@@ -112,6 +112,16 @@ const FaceCapture = () => {
         }
     };
 
+    const openDoorManual = async () => {
+        try {
+            await axios.post(`${API_URL}/door/open`);
+            alert('Door opening command sent!');
+        } catch (error) {
+            console.error("Error opening door", error);
+            alert("Failed to open door: " + (error.response?.data?.error || error.message));
+        }
+    };
+
     if (!user) {
         return (
             <div className="container">
@@ -123,9 +133,12 @@ const FaceCapture = () => {
 
     return (
         <div className="container">
-            <header>
-                <button onClick={logout} style={{ float: 'right' }}>Logout ({user.email})</button>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h1>Face Verification</h1>
+                <div>
+                    <button onClick={openDoorManual} style={{ marginRight: '10px', backgroundColor: '#4a90e2' }}>Open Door</button>
+                    <button onClick={logout}>Logout ({user.email})</button>
+                </div>
             </header>
 
             <div className="webcam-container">

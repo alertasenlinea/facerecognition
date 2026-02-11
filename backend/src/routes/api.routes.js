@@ -4,6 +4,7 @@ const multer = require('multer');
 const { uploadFile } = require('../services/storage.service');
 const { logAccess } = require('../services/db.service');
 const { detectFaces, searchFaces, verifyFaces, createFace } = require('../services/ntech.service');
+const mqttService = require('../services/mqtt.service');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -68,6 +69,13 @@ router.post('/search', upload.single('image'), async (req, res) => {
 
         // Determine status
         const status = bestMatch ? 'MATCH' : 'NO_MATCH';
+
+        // Trigger Door Open if MATCH
+        if (status === 'MATCH') {
+            const cardId = bestMatch.card?.id || 'unknown';
+            const cardName = bestMatch.card?.name || 'Unknown';
+            mqttService.openDoor(5000, cardId, cardName);
+        }
 
         // Log access
         const logEntry = await logAccess({
@@ -193,6 +201,17 @@ router.post('/verify', upload.fields([{ name: 'image1' }, { name: 'image2' }]), 
             details: error.response?.data || 'Internal Server Error',
             step: 'verification'
         });
+    }
+});
+
+router.post('/door/open', (req, res) => {
+    // Manual door open command
+    // In a real app, check req.user or role here
+    const success = mqttService.openDoor(5000, 'manual', 'Operator');
+    if (success) {
+        res.json({ message: 'Door opening command sent' });
+    } else {
+        res.status(503).json({ error: 'MQTT Service unavailable' });
     }
 });
 

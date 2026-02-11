@@ -3,9 +3,13 @@ const cors = require('cors');
 require('dotenv').config();
 
 const apiRoutes = require('./routes/api.routes');
+const { connect: connectMqtt } = require('./services/mqtt.service');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Initialize MQTT
+connectMqtt();
 
 // CORS configuration for production
 const corsOptions = {
