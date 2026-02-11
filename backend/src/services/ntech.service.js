@@ -112,7 +112,7 @@ const createFace = async (faceData) => {
         // Assuming we are attaching a detection to a new card
 
         // 1. Get available watch lists (required for creating a card)
-        const watchListsResponse = await ntechClient.get('/watch_lists/');
+        const watchListsResponse = await ntechClient.get('/watch-lists/');
         const watchLists = watchListsResponse.data.results || [];
 
         let watchListId;
