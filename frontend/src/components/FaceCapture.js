@@ -94,7 +94,8 @@ const FaceCapture = () => {
         try {
             await axios.post(`${API_URL}/enroll`, {
                 detectionId: result.detectedFace.id,
-                name: enrollName
+                name: enrollName,
+                imageUrl: result.imageUrl
             });
             alert('Person enrolled successfully!');
             // Update UI to show as MATCH

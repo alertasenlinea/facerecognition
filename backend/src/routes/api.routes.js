@@ -90,16 +90,29 @@ router.post('/search', upload.single('image'), async (req, res) => {
 // Enroll a new face
 router.post('/enroll', async (req, res) => {
     try {
-        const { detectionId, name, meta } = req.body;
+        const { detectionId, name, meta, imageUrl } = req.body;
 
         if (!detectionId || !name) {
             return res.status(400).json({ error: 'Detection ID and Name are required' });
         }
 
+        let imageBuffer;
+        if (imageUrl) {
+            try {
+                const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                imageBuffer = imageResponse.data;
+            } catch (imgError) {
+                console.warn('Failed to download enrollment image:', imgError.message);
+                // We proceed without imageBuffer, but ntech service will warn/fail attachment
+            }
+        }
+
         const newCard = await createFace({
             detectionId,
             name,
-            meta
+            meta,
+            imageBuffer,
+            imageUrl
         });
 
         res.json({

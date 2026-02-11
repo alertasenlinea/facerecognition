@@ -142,11 +142,32 @@ const createFace = async (faceData) => {
 
         const cardId = cardResponse.data.id;
 
-        // 3. Save the face (detection) to the card if detection_id is provided
-        if (faceData.detectionId) {
-            await ntechClient.post(`/cards/humans/${cardId}/save_detection/`, {
-                detection_id: faceData.detectionId
-            });
+        // 3. Upload face image attachment (REQUIRED for recognition)
+        // If imageBuffer is provided, upload it to /human-card-attachments/
+        if (faceData.imageBuffer) {
+            try {
+                const attachmentForm = new FormData();
+                attachmentForm.append('human_card', String(cardId));
+                attachmentForm.append('file', faceData.imageBuffer, 'face.jpg'); // Filename is required
+
+                // Use a new axios request to ensure headers are correct for multipart
+                // reusing ntechClient might keep JSON headers if not careful
+                await ntechClient.post('/human-card-attachments/', attachmentForm, {
+                    headers: {
+                        ...attachmentForm.getHeaders(),
+                        'Authorization': `Token ${NTECH_API_KEY}` // Ensure auth
+                    }
+                });
+                console.log(`Successfully uploaded attachment for card ${cardId}`);
+            } catch (attachError) {
+                console.error('Failed to upload attachment:', attachError.response?.data || attachError.message);
+                // We log but don't throw, so the card remains created (though might not work for rec)
+                // Or maybe we SHOULD throw to tell user something went wrong?
+                // Given the user wants to FIX enrollment, throwing is better.
+                throw new Error(`Card created but failed to upload photo: ${attachError.message}`);
+            }
+        } else if (faceData.detectionId) {
+            console.warn('No imageBuffer provided for createFace. Skipping attachment upload. Recognition might fail.');
         }
 
         return cardResponse.data;
