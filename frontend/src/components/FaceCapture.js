@@ -9,6 +9,12 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const CHALLENGES = [
+    { id: 'smile', label: '😊 Please SMILE!', instruction: 'Show a happy expression' },
+    { id: 'turn_left', label: '⬅️ Turn Head LEFT', instruction: 'Rotate head slightly to your left' },
+    { id: 'turn_right', label: '➡️ Turn Head RIGHT', instruction: 'Rotate head slightly to your right' }
+];
+
 const FaceCapture = () => {
     const webcamRef = useRef(null);
     const [imgSrc, setImgSrc] = useState(null);
@@ -17,6 +23,10 @@ const FaceCapture = () => {
     const [user, setUser] = useState(null);
     const [enrollName, setEnrollName] = useState('');
     const [enrolling, setEnrolling] = useState(false);
+
+    // Liveness State
+    const [challengeStep, setChallengeStep] = useState(0); // 0 = Idle, 1 = Smile, 2 = Left, 3 = Right, 4 = Final
+    const [challengeStatus, setChallengeStatus] = useState(null); // 'waiting', 'processing', 'success', 'failed'
 
     useEffect(() => {
         const getSession = async () => {
@@ -33,9 +43,7 @@ const FaceCapture = () => {
     }, []);
 
     const login = async () => {
-        await supabase.auth.signInWithOAuth({
-            provider: 'google',
-        });
+        await supabase.auth.signInWithOAuth({ provider: 'google' });
     };
 
     const logout = async () => {
@@ -43,59 +51,127 @@ const FaceCapture = () => {
     };
 
     const capture = useCallback(() => {
-        const imageSrc = webcamRef.current.getScreenshot();
-        setImgSrc(imageSrc);
+        return webcamRef.current.getScreenshot();
     }, [webcamRef]);
+
+    const startProcess = () => {
+        setResult(null);
+        setChallengeStep(1); // Start directly with Step 1
+        setChallengeStatus('waiting');
+    };
+
+    const nextChallenge = async (stepIndex) => {
+        if (stepIndex >= CHALLENGES.length) {
+            // All challenges passed, do final identification
+            setChallengeStep(4); // 4 = Final Identification
+            performIdentification();
+            return;
+        }
+
+        setChallengeStep(stepIndex + 1); // 1-based index for UI
+        setChallengeStatus('waiting');
+    };
+
+    const verifyAction = async () => {
+        const currentChallenge = CHALLENGES[challengeStep - 1]; // Step is 1-based
+        if (!currentChallenge) return;
+
+        setLoading(true);
+        setChallengeStatus('processing');
+        const imageSrc = capture();
+
+        try {
+            // Convert base64 to blob
+            const res = await fetch(imageSrc);
+            const blob = await res.blob();
+            const file = new File([blob], "challenge.jpg", { type: "image/jpeg" });
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            // Re-use search endpoint to get attributes
+            // Note: We ignore the match result here, we only care about attributes
+            const response = await axios.post(`${API_URL}/search`, formData);
+            const face = response.data.detectedFace;
+
+            if (!face) {
+                alert("No face detected!");
+                setChallengeStatus('failed');
+                setLoading(false);
+                return;
+            }
+
+            // Check attributes logic
+            let passed = false;
+            const attributes = face.attributes || {};
+            const emotions = attributes.emotions || {};
+            const headpose = attributes.headpose || {}; // yaw, pitch, roll
+
+            console.log("Challenge Attributes:", attributes);
+
+            switch (currentChallenge.id) {
+                case 'smile':
+                    // NTech emotions: neutral, happy, sad, surprise, anger, fear, disgust
+                    passed = (emotions.happy || 0) >= 0.5;
+                    break;
+                case 'turn_left':
+                    // Assuming Yaw changes. Threshold 10 degrees.
+                    passed = Math.abs(headpose.yaw || 0) > 10;
+                    break;
+                case 'turn_right':
+                    passed = Math.abs(headpose.yaw || 0) > 10;
+                    break;
+            }
+
+            if (passed) {
+                setChallengeStatus('success');
+                setTimeout(() => {
+                    nextChallenge(challengeStep); // Current step index passed
+                }, 1000);
+            } else {
+                setChallengeStatus('failed');
+                alert(`Challenge Failed: ${currentChallenge.instruction}. Try again!`);
+            }
+
+        } catch (error) {
+            console.error("Challenge error", error);
+            setChallengeStatus('failed');
+            alert("Error checking challenge: " + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const performIdentification = async () => {
+        setLoading(true);
+
+        // Wait 1s then capture
+        setTimeout(async () => {
+            try {
+                const imageSrc = capture();
+                const res = await fetch(imageSrc);
+                const blob = await res.blob();
+                const file = new File([blob], "final.jpg", { type: "image/jpeg" });
+                const formData = new FormData();
+                formData.append('image', file);
+
+                const response = await axios.post(`${API_URL}/search`, formData);
+                setResult(response.data);
+            } catch (error) {
+                console.error("ID error", error);
+                alert("Identification failed");
+                setChallengeStep(0); // Reset
+            } finally {
+                setLoading(false);
+            }
+        }, 500);
+    };
 
     const retake = () => {
         setImgSrc(null);
         setResult(null);
         setEnrollName('');
-    };
-
-    const processImage = async () => {
-        if (!imgSrc) return;
-        setLoading(true);
-        setResult(null);
-
-        try {
-            // Convert base64 to blob
-            const res = await fetch(imgSrc);
-            const blob = await res.blob();
-            const file = new File([blob], "capture.jpg", { type: "image/jpeg" });
-
-            const formData = new FormData();
-            formData.append('image', file);
-
-            // CHANGED: Use /search instead of /detect
-            const response = await axios.post(`${API_URL}/search`, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                }
-            });
-
-            setResult(response.data);
-        } catch (error) {
-            console.error("Error processing image", error);
-
-            // Handle Liveness Error (403)
-            if (error.response?.status === 403 && error.response?.data?.code === 'LIVENESS_FAILED') {
-                setResult({
-                    status: 'ERROR',
-                    message: "⚠️ LIVENESS CHECK FAILED: " + (error.response.data.error || "Real person required"),
-                    bestMatch: null
-                });
-                alert("⚠️ ALERTA DE SEGURIDAD: No se detectó una persona viva. Asegúrese de estar frente a la cámara y con buena iluminación.");
-            }
-            // Handle 404 (No face)
-            else if (error.response?.status === 404) {
-                alert("No face detected: " + (error.response?.data?.error));
-            } else {
-                alert("Error processing image: " + (error.response?.data?.error || error.message));
-            }
-        } finally {
-            setLoading(false);
-        }
+        setChallengeStep(0);
     };
 
     const enrollFace = async () => {
@@ -108,7 +184,6 @@ const FaceCapture = () => {
                 imageUrl: result.imageUrl
             });
             alert('Person enrolled successfully!');
-            // Update UI to show as MATCH
             setResult(prev => ({
                 ...prev,
                 status: 'MATCH',
@@ -123,83 +198,86 @@ const FaceCapture = () => {
     };
 
     const openDoorManual = async () => {
-        try {
-            await axios.post(`${API_URL}/door/open`);
-            alert('Door opening command sent!');
-        } catch (error) {
-            console.error("Error opening door", error);
-            alert("Failed to open door: " + (error.response?.data?.error || error.message));
-        }
+        try { await axios.post(`${API_URL}/door/open`); alert('Door command sent!'); }
+        catch (e) { alert(e.message); }
     };
 
     if (!user) {
         return (
-            <div className="container">
+            <div className="container" style={{ textAlign: 'center', marginTop: '50px' }}>
                 <h1>Facial Validation App</h1>
-                <button onClick={login}>Login with Google</button>
+                <button onClick={login} style={{ padding: '10px 20px', fontSize: '1.2em' }}>Login with Google</button>
             </div>
         );
     }
 
+    const currentInstruction = challengeStep > 0 && challengeStep <= CHALLENGES.length
+        ? CHALLENGES[challengeStep - 1]
+        : null;
+
     return (
         <div className="container">
-            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h1>Face Verification</h1>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h1>Face Verification (Active Liveness)</h1>
                 <div>
-                    <button onClick={openDoorManual} style={{ marginRight: '10px', backgroundColor: '#4a90e2' }}>Open Door</button>
-                    <button onClick={logout}>Logout ({user.email})</button>
+                    <button onClick={openDoorManual} style={{ marginRight: '10px', backgroundColor: '#4a90e2', color: 'white', padding: '8px' }}>Open Door</button>
+                    <button onClick={logout}>Logout</button>
                 </div>
             </header>
 
-            <div className="webcam-container">
-                {imgSrc ? (
-                    <img src={imgSrc} alt="captured" />
-                ) : (
-                    <Webcam
-                        audio={false}
-                        ref={webcamRef}
-                        screenshotFormat="image/jpeg"
-                        width={640}
-                        height={480}
-                        videoConstraints={{ facingMode: "user" }}
-                    />
-                )}
+            <div className="webcam-container" style={{ textAlign: 'center' }}>
+                <Webcam
+                    ref={webcamRef}
+                    screenshotFormat="image/jpeg"
+                    width={640}
+                    height={480}
+                    videoConstraints={{ facingMode: "user" }}
+                />
             </div>
 
-            <div className="controls">
-                {!imgSrc ? (
-                    <button onClick={capture}>Capture Photo</button>
-                ) : (
-                    <>
-                        <button onClick={retake} disabled={loading || enrolling}>Retake</button>
-                        {!result && (
-                            <button onClick={processImage} disabled={loading}>
-                                {loading ? 'Processing...' : 'Identify Face'}
-                            </button>
+            <div className="controls" style={{ marginTop: '20px', textAlign: 'center' }}>
+
+                {challengeStep === 0 && !result && (
+                    <button onClick={startProcess} style={{ fontSize: '1.5em', padding: '15px 30px', backgroundColor: '#28a745', color: 'white', borderRadius: '50px', cursor: 'pointer' }}>
+                        START VERIFICATION 🛡️
+                    </button>
+                )}
+
+                {currentInstruction && (
+                    <div className="challenge-box" style={{ padding: '20px', margin: '20px auto', maxWidth: '500px', border: '2px solid #007bff', borderRadius: '10px', backgroundColor: '#e9f5ff' }}>
+                        <h3 style={{ color: '#007bff' }}>Step {challengeStep}/3</h3>
+                        <h1 style={{ fontSize: '2.5em', margin: '10px 0' }}>{currentInstruction.label}</h1>
+                        <p style={{ fontSize: '1.2em' }}>{currentInstruction.instruction}</p>
+
+                        <button onClick={verifyAction} disabled={loading} style={{ fontSize: '1.2em', padding: '10px 20px', marginTop: '10px' }}>
+                            {loading ? 'Verifying...' : '✅ I AM DOING IT'}
+                        </button>
+
+                        {challengeStatus === 'failed' && <p style={{ color: 'red', fontWeight: 'bold' }}>❌ Not detected properly. Try again.</p>}
+                        {challengeStatus === 'success' && <p style={{ color: 'green', fontWeight: 'bold' }}>✅ Success!</p>}
+                    </div>
+                )}
+
+                {challengeStep === 4 && loading && <h2 style={{ color: '#007bff' }}>Identificando usuario... 🔍</h2>}
+
+                {result && (
+                    <div className="results" style={{ marginTop: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '8px' }}>
+                        {result.status === 'MATCH' ? (
+                            <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '15px', borderRadius: '5px' }}>
+                                <h1 style={{ margin: 0 }}>✅ ACCESS GRANTED</h1>
+                                <h2>Welcome, {result.bestMatch?.card?.name}</h2>
+                                <small>Confidence: {(result.bestMatch?.similarity * 100).toFixed(1)}%</small>
+                            </div>
+                        ) : (
+                            <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '5px' }}>
+                                <h1>❌ NOT RECOGNIZED</h1>
+                                <p>Face detected, but not found in database.</p>
+                                <button onClick={retake}>Try Again</button>
+                            </div>
                         )}
-                    </>
-                )}
-            </div>
 
-            {result && (
-                <div className="results" style={{ marginTop: '20px', padding: '15px', border: '1px solid #ccc', borderRadius: '8px' }}>
-
-                    {/* STATUS DISPLAY */}
-                    {result.status === 'MATCH' ? (
-                        <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '15px', borderRadius: '5px', marginBottom: '15px', textAlign: 'center' }}>
-                            <h2 style={{ margin: 0 }}>✅ ACCESS GRANTED</h2>
-                            <p style={{ fontSize: '1.2em', fontWeight: 'bold' }}>
-                                Welcome, {result.bestMatch?.card?.name || 'Unknown'}
-                            </p>
-                            <small>Confidence: {(result.bestMatch?.similarity * 100).toFixed(1)}%</small>
-                        </div>
-                    ) : (
-                        <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '5px', marginBottom: '15px', textAlign: 'center' }}>
-                            <h2 style={{ margin: 0 }}>❌ NOT RECOGNIZED</h2>
-                            <p>Face detected, but not found in database.</p>
-
-                            {/* ENROLLMENT FORM */}
-                            <div style={{ marginTop: '15px', borderTop: '1px solid #f5c6cb', paddingTop: '10px' }}>
+                        {result.status !== 'MATCH' && (
+                            <div style={{ marginTop: '15px', borderTop: '1px solid #ccc', paddingTop: '10px' }}>
                                 <h4>Register this person?</h4>
                                 <input
                                     type="text"
@@ -212,18 +290,10 @@ const FaceCapture = () => {
                                     {enrolling ? 'Saving...' : 'Enroll Face'}
                                 </button>
                             </div>
-                        </div>
-                    )}
-
-                    <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
-                        <p>Saved to: <a href={result.imageUrl} target="_blank" rel="noreferrer">View Image</a> (Log ID: {result.logId})</p>
-                        <details>
-                            <summary>Debug Info</summary>
-                            <pre>{JSON.stringify(result, null, 2)}</pre>
-                        </details>
+                        )}
                     </div>
-                </div>
-            )}
+                )}
+            </div>
         </div>
     );
 };

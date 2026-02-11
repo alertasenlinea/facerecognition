@@ -36,11 +36,11 @@ const detectFaces = async (imageBuffer, originalname) => {
             face: {
                 age: false,
                 beard: false,
-                emotions: false,
+                emotions: true,
                 glasses: false,
                 gender: false,
                 medmask: false,
-                headpose: false
+                headpose: true
             }
         };
         formData.append('attributes', JSON.stringify(attributes));
