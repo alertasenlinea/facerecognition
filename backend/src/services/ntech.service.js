@@ -27,6 +27,10 @@ const detectFaces = async (imageBuffer, originalname) => {
         const formData = new FormData();
         formData.append('photo', imageBuffer, originalname);
 
+        // Request Liveness
+        form.append('liveness', 'true');
+        form.append('attributes', 'liveness,emotions');
+
         // Optional: Request specific attributes
         const attributes = {
             face: {

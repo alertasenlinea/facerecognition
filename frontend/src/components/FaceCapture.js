@@ -77,9 +77,19 @@ const FaceCapture = () => {
             setResult(response.data);
         } catch (error) {
             console.error("Error processing image", error);
-            // Handle 404 (No face) separately if needed, though API returns 404 for no face in backend
-            if (error.response?.status === 404) {
-                alert("No face detected or error: " + (error.response?.data?.error));
+
+            // Handle Liveness Error (403)
+            if (error.response?.status === 403 && error.response?.data?.code === 'LIVENESS_FAILED') {
+                setResult({
+                    status: 'ERROR',
+                    message: "⚠️ LIVENESS CHECK FAILED: " + (error.response.data.error || "Real person required"),
+                    bestMatch: null
+                });
+                alert("⚠️ ALERTA DE SEGURIDAD: No se detectó una persona viva. Asegúrese de estar frente a la cámara y con buena iluminación.");
+            }
+            // Handle 404 (No face)
+            else if (error.response?.status === 404) {
+                alert("No face detected: " + (error.response?.data?.error));
             } else {
                 alert("Error processing image: " + (error.response?.data?.error || error.message));
             }

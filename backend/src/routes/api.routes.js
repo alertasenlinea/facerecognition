@@ -42,6 +42,31 @@ router.post('/search', upload.single('image'), async (req, res) => {
         const firstFace = detectionResult.objects.face[0];
         const detectionId = firstFace.id;
 
+        // --- LIVENESS CHECK ---
+        // Check if liveness score is available and valid
+        // NTLAB usually returns 'liveness' object or attribute within the face object
+        const livenessScore = firstFace.liveness?.score || firstFace.attributes?.liveness || 0;
+        const LIVENESS_THRESHOLD = 0.7; // Adjust based on testing
+
+        // If liveness is present in response, enforce it
+        if (firstFace.liveness || firstFace.attributes?.liveness !== undefined) {
+            const score = typeof livenessScore === 'object' ? livenessScore.score : livenessScore;
+            if (score < LIVENESS_THRESHOLD) {
+                console.warn(`Liveness Check Failed: Score ${score} < ${LIVENESS_THRESHOLD}`);
+                await logAccess({
+                    imageUrl,
+                    status: 'ERROR',
+                    metadata: { error: 'Liveness Check Failed', score }
+                });
+                return res.status(403).json({
+                    error: 'Liveness Check Failed. Real person required.',
+                    code: 'LIVENESS_FAILED',
+                    score
+                });
+            }
+        }
+        // ----------------------
+
         // Search for similar faces
         const searchOptions = {
             limit: req.query.limit || 10,
