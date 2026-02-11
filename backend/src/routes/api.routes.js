@@ -42,6 +42,8 @@ router.post('/search', upload.single('image'), async (req, res) => {
         const firstFace = detectionResult.objects.face[0];
         const detectionId = firstFace.id;
 
+        console.log('DEBUG: NTech Face Object:', JSON.stringify(firstFace, null, 2));
+
         // --- LIVENESS CHECK ---
         // Check if liveness score is available and valid
         // NTLAB usually returns 'liveness' object or attribute within the face object
