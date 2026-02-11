@@ -111,11 +111,30 @@ const createFace = async (faceData) => {
         // FindFace Multi expects a body with at least specific detection info or just creates a card
         // Assuming we are attaching a detection to a new card
 
-        // 1. Create a card (human)
-        const cardResponse = await ntechClient.post('/cards/humans/', {
+        // 1. Get available watch lists (required for creating a card)
+        const watchListsResponse = await ntechClient.get('/watch_lists/');
+        const watchLists = watchListsResponse.data.results || [];
+
+        let watchListId;
+        if (watchLists.length > 0) {
+            watchListId = watchLists[0].id; // Use the first available list
+        } else {
+            // If no list exists, try to create one or handle error
+            // For now, we assume there's at least one list or we can't create a card without permissions
+            console.warn('No watch lists found. Attempting to create card without list (might fail if required).');
+        }
+
+        const cardData = {
             name: faceData.name,
             meta: faceData.meta || {}
-        });
+        };
+
+        if (watchListId) {
+            cardData.watch_lists = [watchListId];
+        }
+
+        // 2. Create a card (human)
+        const cardResponse = await ntechClient.post('/cards/humans/', cardData);
 
         if (!cardResponse.data || !cardResponse.data.id) {
             throw new Error('Failed to create card');
@@ -123,9 +142,7 @@ const createFace = async (faceData) => {
 
         const cardId = cardResponse.data.id;
 
-        // 2. Save the face (detection) to the card if detection_id is provided
-        // This endpoint might vary based on API version. 
-        // For FindFace Multi, we usually "save" a temporary detection to a permanent card.
+        // 3. Save the face (detection) to the card if detection_id is provided
         if (faceData.detectionId) {
             await ntechClient.post(`/cards/humans/${cardId}/save_detection/`, {
                 detection_id: faceData.detectionId
