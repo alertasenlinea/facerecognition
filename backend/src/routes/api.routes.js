@@ -49,7 +49,22 @@ router.post('/search', upload.single('image'), async (req, res) => {
 
         const searchResults = await searchFaces(detectionId, searchOptions);
         const matches = searchResults.results || [];
-        const bestMatch = matches.length > 0 ? matches[0] : null;
+
+        // NTLAB returns a list of cards with 'looks_like_confidence'
+        // We need to map it to the structure expected by frontend: { card: {...}, similarity: ... }
+        const ntechMatch = matches.length > 0 ? matches[0] : null;
+
+        let bestMatch = null;
+        if (ntechMatch) {
+            bestMatch = {
+                card: {
+                    id: ntechMatch.id,
+                    name: ntechMatch.name,
+                    meta: ntechMatch.meta
+                },
+                similarity: ntechMatch.looks_like_confidence || ntechMatch.confidence || 0
+            };
+        }
 
         // Determine status
         const status = bestMatch ? 'MATCH' : 'NO_MATCH';
@@ -58,7 +73,7 @@ router.post('/search', upload.single('image'), async (req, res) => {
         const logEntry = await logAccess({
             imageUrl,
             detectionId,
-            matchedCardId: bestMatch?.card?.id, // Adjust based on NTECH response structure
+            matchedCardId: bestMatch?.card?.id,
             confidence: bestMatch?.similarity,
             status,
             metadata: {
